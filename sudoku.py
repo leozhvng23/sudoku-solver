@@ -5,18 +5,10 @@ e.g. my_board['A1'] = 8
 """
 import sys
 
+
 ROW = "ABCDEFGHI"
 COL = "123456789"
-
-
-# for testing
-test_input = (
-    "003020600900305001001806400008102900700000008006708200002609500800203009005010300"
-)
-
-test_board = {
-    ROW[r] + COL[c]: test_input[9 * r + c] for r in range(9) for c in range(9)
-}
+grids = [r + c for r in ROW for c in COL]
 
 
 def get_group(row, col):
@@ -34,31 +26,62 @@ def get_group(row, col):
 
 
 # dict stores each grid and the group of grids that cannot share the same value
-groups = dict((r + c, get_group(r, c)) for r in ROW for c in COL)
+groups = dict((rc, get_group(rc[0], rc[1])) for rc in grids)
 
 
 def update_legal_values(grid, val, domain):
     """Updates the legal values of the grid group (deleting val)."""
+    domain[grid] = val
     for rc in groups[grid]:
         if val in domain[rc]:
+            # delete assigned value from other valid lists
             domain[rc] = domain[rc].replace(val, "")
-    return
+            if len(domain[rc]) == 0:  # invalid delete -- last value
+                return False
+            elif len(domain[rc]) == 1:  # forward check
+                if not update_legal_values(rc, domain[rc], domain):
+                    return False
+    return domain
 
 
 def get_domain(board):
-    """Get all the legal values of each grid"""
+    """Get lists of legal values for each grid"""
     domain = dict((r + c, COL) for r in ROW for c in COL)
-    print(domain)
     for key, val in board.items():
         if val != "0":
-            if val not in domain[key] or len(domain[key]) == 0:
-                print("invalid board")
-                return False
             update_legal_values(key, val, domain)
     return domain
 
 
-# print(get_domain(test_input))
+def is_complete(board):
+    """Helper function to check if board is complete."""
+    return all(len(board[(r + c)]) == 1 for r in ROW for c in COL)
+
+
+def select_unassigned_variable(board):
+    """Helper function to select the unassigned variable with minimum remaining value"""
+    _, rc = min((len(board[rc]), rc) for rc in grids if len(board[rc]) > 1)
+    return rc
+
+
+def backtracking(board):
+    """Takes a board and returns solved board."""
+    # check if assignment is complete
+    if is_complete(board):
+        return board
+
+    # pick the minimum remaining variable from domain
+    var = select_unassigned_variable(board)
+    
+    for val in board[var]:
+        new_board = board.copy()
+        # forward checking to reduce variables
+        new_board = update_legal_values(var, val, new_board)
+        if new_board:
+            result = backtracking(new_board)
+            if result:
+                return result
+    return False
 
 
 def print_board(board):
@@ -80,35 +103,6 @@ def board_to_string(board):
     return "".join(ordered_vals)
 
 
-def is_complete(board):
-    """Helper function to check if board is complete."""
-    for val in board.values():
-        if len(val) > 1:
-            return False
-        return True
-
-
-def select_unassigned_variable(board):
-    """Helper function to select the unassigned variable with minimum remaining value"""
-    return sorted(board, key=lambda k: len(board[k]), reverse=True)[0]
-
-
-def backtracking(board):
-    """Takes a board and returns solved board."""
-    # TODO: implement this
-
-    # check if assignment is comlete
-    if is_complete(board):
-        return board
-
-    var = select_unassigned_variable(board)
-
-    for var in order_domain_values(var, board):
-        pass
-
-    return solved_board
-
-
 if __name__ == "__main__":
     if len(sys.argv) > 1:
 
@@ -116,9 +110,7 @@ if __name__ == "__main__":
         print(sys.argv[1])
         # Parse boards to dict representation, scanning board L to R, Up to Down
         board = {
-            ROW[r] + COL[c]: sys.argv[1][9 * r + c]
-            for r in range(9)
-            for c in range(9)
+            ROW[r] + COL[c]: sys.argv[1][9 * r + c] for r in range(9) for c in range(9)
         }
 
         solved_board = backtracking(get_domain(board))
