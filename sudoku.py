@@ -25,7 +25,9 @@ def get_group(row, col):
                 )
 
 
-# dict stores each grid and the group of grids that cannot share the same value
+# key: each grid
+# value: the group of grids that cannot share the same value
+# as the key grid
 groups = dict((rc, get_group(rc[0], rc[1])) for rc in grids)
 
 
@@ -46,7 +48,9 @@ def update_legal_values(grid, val, domain):
 
 def get_domain(board):
     """Get lists of legal values for each grid"""
-    domain = dict((r + c, COL) for r in ROW for c in COL)
+    # initialize each grid with all 1-9 legal values
+    domain = dict((rc, COL) for rc in grids)
+    # delete illegal values
     for key, val in board.items():
         if val != "0":
             update_legal_values(key, val, domain)
@@ -55,13 +59,18 @@ def get_domain(board):
 
 def is_complete(board):
     """Helper function to check if board is complete."""
-    return all(len(board[(r + c)]) == 1 for r in ROW for c in COL)
+    return all(len(board[rc]) == 1 for rc in grids)
 
 
 def select_unassigned_variable(board):
     """Helper function to select the unassigned variable with minimum remaining value"""
-    _, rc = min((len(board[rc]), rc) for rc in grids if len(board[rc]) > 1)
-    return rc
+    min_len, min_var = float("inf"), None
+    for rc in grids:
+        if len(board[rc]) > 1:
+            if len(board[rc]) < min_len:
+                min_len, min_var = len(board[rc]), rc
+
+    return min_var
 
 
 def backtracking(board):
@@ -72,7 +81,7 @@ def backtracking(board):
 
     # pick the minimum remaining variable from domain
     var = select_unassigned_variable(board)
-    
+
     for val in board[var]:
         new_board = board.copy()
         # forward checking to reduce variables
@@ -97,9 +106,8 @@ def print_board(board):
 def board_to_string(board):
     """Helper function to convert board dictionary to string for writing."""
     ordered_vals = []
-    for r in ROW:
-        for c in COL:
-            ordered_vals.append(board[r + c])
+    for rc in grids:
+        ordered_vals.append(board[rc])
     return "".join(ordered_vals)
 
 
