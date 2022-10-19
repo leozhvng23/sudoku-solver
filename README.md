@@ -1,5 +1,5 @@
 # sudoku-solver
-## A Sudoku solver using backtracking search with forward checking and minimum remaining value heuristic.
+## A Sudoku solver using backtracking search with constraint propagation and minimum remaining value heuristic.
 
 The sudoku is represented as a string of 81 (9x9) numbers
 
