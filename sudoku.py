@@ -4,71 +4,92 @@ int values.
 e.g. my_board['A1'] = 8
 """
 import sys
-
+import time
+import statistics
 
 ROW = "ABCDEFGHI"
 COL = "123456789"
 grids = [r + c for r in ROW for c in COL]
 
 
-def get_group(row, col):
-    """Get the group of grids in the same row, col, and 3x3 box"""
-    col_group = [r + col for r in ROW if r != row]
-    row_group = [row + c for c in COL if c != col]
+def get_col(rc):
+    """helper function to get all grids in the same column"""
+    return [r + rc[1] for r in ROW if rc[0] != r]
+
+
+def get_row(rc):
+    """helper function to get all grids in the same row"""
+    return [rc[0] + c for c in COL if rc[1] != c]
+
+
+def get_box(rc):
+    """helper function to get all grids in the same 3x3 box"""
     for rows in ("ABC", "DEF", "GHI"):
         for cols in ("123", "456", "789"):
-            if row in rows and col in cols:
-                return (
-                    col_group
-                    + row_group
-                    + [r + c for r in rows for c in cols if r + c != row + col]
-                )
+            if rc[0] in rows and rc[1] in cols:
+                return [r + c for r in rows for c in cols if r + c != rc]
 
 
+def get_group(rc):
+    """helper function to get all the related grids (column, row, box)"""
+    return list(set(get_col(rc) + get_row(rc) + get_box(rc)))
+
+
+# memoize function get_group
 # key: each grid
-# value: the group of grids that cannot share the same value
-# as the key grid
-groups = dict((rc, get_group(rc[0], rc[1])) for rc in grids)
+# value: the group of grids that cannot share the same value as the key grid
+groups = dict((rc, get_group(rc)) for rc in grids)
 
 
-def update_legal_values(grid, val, domain):
-    """Updates the legal values of the grid group (deleting val)."""
-    domain[grid] = val
-    for rc in groups[grid]:
-        if val in domain[rc]:
-            # delete assigned value from other valid lists
-            domain[rc] = domain[rc].replace(val, "")
-            if len(domain[rc]) == 0:  # invalid delete -- last value
+def inference(var, val, domains):
+    """
+    helper function to assign value and forward check to update the domains.
+    """
+    # assign value
+    domains[var] = val
+    # delete value from domains
+    for v in groups[var]:
+        if val in domains[v]:
+            # check if domain will be valid after update
+            if len(domains[v]) <= 1:
                 return False
-            elif len(domain[rc]) == 1:  # forward check
-                if not update_legal_values(rc, domain[rc], domain):
-                    return False
-    return domain
+            domains[v] = domains[v].replace(val, "")
+    return domains
 
 
-def get_domain(board):
+def get_domains(board):
     """Get lists of legal values for each grid"""
     # initialize each grid with all 1-9 legal values
-    domain = dict((rc, COL) for rc in grids)
+    domains = dict((rc, COL) for rc in grids)
+
     # delete illegal values
     for key, val in board.items():
         if val != "0":
-            update_legal_values(key, val, domain)
-    return domain
+            domains = inference(key, val, domains)
+
+    return domains
 
 
 def is_complete(board):
     """Helper function to check if board is complete."""
-    return all(len(board[rc]) == 1 for rc in grids)
+    if all(len(board[rc]) == 1 for rc in grids):
+        for rc in grids:
+            if (
+                len(set([board[grid] for grid in get_col(rc)] + [board[rc]])) < 9
+                or len(set([board[grid] for grid in get_row(rc)] + [board[rc]])) < 9
+                or len(set([board[grid] for grid in get_box(rc)] + [board[rc]])) < 9
+            ):
+                return False
+        return True
+    return False
 
 
 def select_unassigned_variable(board):
     """Helper function to select the unassigned variable with minimum remaining value"""
     min_len, min_var = float("inf"), None
     for rc in grids:
-        if len(board[rc]) > 1:
-            if len(board[rc]) < min_len:
-                min_len, min_var = len(board[rc]), rc
+        if len(board[rc]) > 1 and len(board[rc]) < min_len:
+            min_len, min_var = len(board[rc]), rc
 
     return min_var
 
@@ -82,15 +103,17 @@ def backtracking(board):
     # pick the minimum remaining variable from domain
     var = select_unassigned_variable(board)
 
+    # return failed if there are no valid mrv
+    if not var:
+        return False
+
     for val in board[var]:
-        new_board = board.copy()
-        # forward checking to reduce variables
-        new_board = update_legal_values(var, val, new_board)
+        # assign value and then forward check
+        new_board = inference(var, val, board.copy())
         if new_board:
             result = backtracking(new_board)
             if result:
                 return result
-    return False
 
 
 def print_board(board):
@@ -121,7 +144,8 @@ if __name__ == "__main__":
             ROW[r] + COL[c]: sys.argv[1][9 * r + c] for r in range(9) for c in range(9)
         }
 
-        solved_board = backtracking(get_domain(board))
+        solved_board = backtracking(get_domains(board))
+        # print_board(solved_board)
 
         # Write board to file
         out_filename = "output.txt"
@@ -144,6 +168,9 @@ if __name__ == "__main__":
         # Setup output file
         out_filename = "output.txt"
         outfile = open(out_filename, "w")
+        outfile_readme = open("README.txt", "w")
+        total_solved, runtime = 0, []
+        print("Solving sudokus...")
 
         # Solve each board using backtracking
         for line in sudoku_list.split("\n"):
@@ -156,17 +183,38 @@ if __name__ == "__main__":
                 ROW[r] + COL[c]: line[9 * r + c] for r in range(9) for c in range(9)
             }
 
-            # Print starting board. TODO: Comment this out when timing runs.
-            print_board(board)
+            # Print starting board.
+            # print_board(board)
 
             # Solve with backtracking
-            solved_board = backtracking(get_domain(board))
+            start_time = time.time()
+            solved_board = backtracking(get_domains(board))
+            runtime.append(time.time() - start_time)
+            if solved_board:
+                total_solved += 1
 
-            # Print solved board. TODO: Comment this out when timing runs.
-            print_board(solved_board)
+            # Print solved board.
+            # print_board(solved_board)
 
             # Write board to file
             outfile.write(board_to_string(solved_board))
             outfile.write("\n")
+
+        outfile_readme.write("Total boards solved: %.0f" % total_solved)
+        outfile_readme.write("\n")
+        outfile_readme.write("Total time taken: %.2fs" % sum(runtime))
+        outfile_readme.write("\n")
+        outfile_readme.write(
+            "Average time taken: %.2fs" % (sum(runtime) / len(runtime))
+        )
+        outfile_readme.write("\n")
+        outfile_readme.write("Minimum time taken: %.5fs" % (min(runtime)))
+        outfile_readme.write("\n")
+        outfile_readme.write("Maximum time taken: %.2fs" % (max(runtime)))
+        outfile_readme.write("\n")
+        outfile_readme.write(
+            "Standard deviation of time taken: %.2f" % statistics.pstdev(runtime)
+        )
+        outfile_readme.write("\n")
 
         print("Finishing all boards in file.")
